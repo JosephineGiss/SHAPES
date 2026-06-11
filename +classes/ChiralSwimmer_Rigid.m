@@ -29,7 +29,6 @@ classdef ChiralSwimmer_Rigid < classes.RigidBody
 
             % readjusting position
             current_xG = classes.ConstrainedAggregate.getCenterOfMass(xx, [rad, a*ones(1, helix.N)], rho);
-            % X_ID = xx - current_xG;
             X_ID = mat2cell(xx - current_xG, 3, ones(1,helix.N + 1)); 
             for k = 1:helix.N + 1
                 xx(:, k) = position.rot*(xx(:, k) - current_xG) + position.xG;
@@ -41,6 +40,7 @@ classdef ChiralSwimmer_Rigid < classes.RigidBody
             obj.helix = helix;
             obj.rad = rad;
             obj.X_ID = X_ID;
+            obj.Rot_init = position.rot;
             
         end
 

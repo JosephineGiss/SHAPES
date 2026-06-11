@@ -43,8 +43,13 @@ classdef ChiralDipole < classes.RigidBody
             xx = zeros(3, N);
             
             % readjusting position
+            % for k = 1:N
+            %     xx(:,k) = position.rot*xx_combined(:,k) + position.xG;
+            % end
+            current_xG = classes.ConstrainedAggregate.getCenterOfMass(xx_combined, a, rho);
+            X_ID = mat2cell(xx_combined - current_xG, 3, ones(1, N)); 
             for k = 1:N
-                xx(:,k) = position.rot*xx_combined(:,k) + position.xG;
+                xx(: ,k) = position.rot*(xx_combined(:, k) - current_xG) + position.xG;
             end
             
             % instantiating object
@@ -53,6 +58,8 @@ classdef ChiralDipole < classes.RigidBody
             obj.rod = rod;
             obj.right_handed_helix = right_handed_helix;
             obj.left_handed_helix = left_handed_helix;
+            obj.X_ID = X_ID;
+            obj.Rot_init = position.rot;
 
         end
 

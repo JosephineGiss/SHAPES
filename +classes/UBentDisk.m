@@ -1,18 +1,17 @@
-classdef UBentDisk < Disk
+classdef UBentDisk < classes.Disk
     
     properties
         Rc; % radius of curvature (R = inf for flat disk, smaller R = more curved)
     end
     
     methods
-        function obj = UBentDisk(rad, Rc, a, dr, dAB, rho, position, setup)
+        function obj = UBentDisk(rad, Rc, a, lambda, rho, position, setup)
             
             arguments 
                 rad (1,1) double = 12
                 Rc (1,:) double = [6.3 5.8 6.9]
                 a (1,1) double = 0.2367/2
-                dr (1,1) double = 0.2367*(5/2)
-                dAB (1,1) double = 0.2367*(5/2)
+                lambda (1,1) double = 5
                 rho (1,1) double = 1030
                 position.xG (3,1) double = [0;0;0]
                 position.rot (3,3) double = eye(3)
@@ -24,7 +23,7 @@ classdef UBentDisk < Disk
             end
             
             % Calling constructor => flat disk initialization
-            obj@Disk(rad, a, dr, dAB, rho, xG = position.xG, rot = position.rot, setup = setup.setup);
+            obj@classes.Disk(rad, a, lambda, rho, xG = position.xG, rot = position.rot, setup = setup.setup);
             
             obj.Rc = Rc;
             if ~isscalar(Rc)
@@ -42,10 +41,17 @@ classdef UBentDisk < Disk
                 end
             end
             
-            xx0 = xx;
+            % xx0 = xx;
+            % for k = 1:obj.N
+            %     xx(:,k) = position.rot*xx(:,k) + position.xG - sum([obj.m{:}].*xx0./obj.M, 2);
+            % end
+            % readjusting position
+            current_xG = classes.ConstrainedAggregate.getCenterOfMass(xx, a, rho);
+            X_ID = mat2cell(xx - current_xG, 3, ones(1, obj.N)); 
             for k = 1:obj.N
-                xx(:,k) = position.rot*xx(:,k) + position.xG - sum([obj.m{:}].*xx0./obj.M, 2);
+                xx(:, k) = position.rot*(xx(:, k) - current_xG) + position.xG;
             end
+
             
             %%% Updating space properties
 
@@ -66,14 +72,17 @@ classdef UBentDisk < Disk
             obj.x = num2cell(xx, 1);
             DurlofskyTensors(obj);
             if obj.setup == 0
-                Calculation_gd_M(obj);
+                Calculation_gdM(obj);
             elseif obj.setup == 1
                 WallTensors(obj)
-                Calculation_gd_M_Wall(obj)
+                Calculation_gdM_Wall(obj)
             end
-
-            obj.xG = sum([obj.m{:}].*cell2mat(obj.x)./obj.M, 2);
-            obj.X_ID = mat2cell(cell2mat(obj.x) - obj.xG, 3, ones(1,obj.N)); 
+            
+            obj.xG = current_xG;
+            % obj.xG = sum([obj.m{:}].*cell2mat(obj.x)./obj.M, 2);
+            % obj.X_ID = mat2cell(cell2mat(obj.x) - obj.xG, 3, ones(1,obj.N)); 
+            obj.X_ID = X_ID;
+            obj.Rot_init = position.rot;
         end
         
         function poly_Rc = getRadiusOfCurvatureFit(obj, varargin) 

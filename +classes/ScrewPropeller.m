@@ -47,14 +47,18 @@ classdef ScrewPropeller < classes.RigidBody
             end
             
             % readjusting position
+            current_xG = classes.ConstrainedAggregate.getCenterOfMass(xx, a, rho);
+            X_ID = mat2cell(xx - current_xG, 3, ones(1, N)); 
             for k = 1:N
-                xx(:,k) = position.rot*xx(:,k) + position.xG;
+                xx(:, k) = position.rot*(xx(:, k) - current_xG) + position.xG;
             end
             
             % instantiating object
             obj@classes.RigidBody(xx, a, rho, setup.setup);
             obj.disk1 = disk1;
             obj.disk2 = disk2;
+            obj.X_ID = X_ID;
+            obj.Rot_init = position.rot;
 
         end
 

@@ -55,8 +55,11 @@ classdef Disk < classes.RigidBody
 
             N = i; % total number of small spheres used to make the disk
             xx = xx(:, 1:N);
+            % readjusting position
+            current_xG = classes.ConstrainedAggregate.getCenterOfMass(xx, a, rho);
+            X_ID = mat2cell(xx - current_xG, 3, ones(1, N)); 
             for k = 1:N
-                xx(:, k) = position.rot*xx(:, k) + position.xG;
+                xx(:, k) = position.rot*(xx(:, k) - current_xG) + position.xG;
             end
             
             % instantiating object
@@ -66,6 +69,8 @@ classdef Disk < classes.RigidBody
             obj.dAB = dAB;
             obj.dr_eff = dr_eff;
             obj.dAB_eff = dAB_eff;
+            obj.X_ID = X_ID;
+            obj.Rot_init = position.rot;
             
         end
     end

@@ -9,6 +9,7 @@ classdef Rod < classes.RigidBody
     methods
         
         function obj = Rod(L, a, lambda, rho, position, setup)
+
             arguments
                 L (1,1) double = 30;
                 a (1,1) double = 1;
@@ -38,7 +39,7 @@ classdef Rod < classes.RigidBody
             current_xG = classes.ConstrainedAggregate.getCenterOfMass(xx, a, rho);
             X_ID = mat2cell(xx - current_xG, 3, ones(1, N)); 
             for k = 1:N
-                xx(: ,k) = position.rot*xx(:, k) + position.xG - current_xG;
+                xx(:, k) = position.rot*(xx(:, k) - current_xG) + position.xG;
             end
             
             % object initialization
@@ -48,6 +49,7 @@ classdef Rod < classes.RigidBody
             obj.dAB_eff = dAB_eff;
             obj.X_ID = X_ID;
             obj.Rot_init = position.rot;
+            
         end
 
     end

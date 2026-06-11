@@ -48,8 +48,9 @@ classdef ConicalHelix < classes.RigidBody
             
             % readjusting position
             current_xG = classes.ConstrainedAggregate.getCenterOfMass(xx, a, rho);
+            X_ID = mat2cell(xx - current_xG, 3, ones(1, Ns - 1)); 
             for k = 1:Ns - 1
-                xx(:, k) = position.rot*xx(:, k) + position.xG - current_xG;
+                xx(:, k) = position.rot*(xx(:, k) - current_xG) + position.xG;
             end
             
             % instantiating object
@@ -61,6 +62,8 @@ classdef ConicalHelix < classes.RigidBody
             obj.beta = beta;
             obj.dAB = dAB;
             obj.dAB_eff = dAB_eff;
+            obj.X_ID = X_ID;
+            obj.Rot_init = position.rot;
 
         end
 
