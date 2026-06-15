@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "This repository implements the method described in Gissinger et al. (2026). If you use it in your research, please cite this paper."
+title: "Resistance tensors for aggregate particles with Stokesian dynamics"
+
+authors:
+  - family-names: Gissinger
+    given-names: J.
+  - family-names: Voth
+    given-names: G.
+  - family-names: Mehlig
+    given-names: B.
+  - family-names: Candelier
+    given-names: F.
+
+date-released: 2026-06-01
+
+identifiers:
+  - type: arxiv
+    value: "2606.13826"
+
+url: "https://arxiv.org/abs/2606.13826"
