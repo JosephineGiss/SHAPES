@@ -1076,6 +1076,8 @@ classdef SphereAssembly < handle
                 end
                 obj.gdM(6*obj.N + 9*i - 8 : 6*obj.N + 9*i, :) = [LJ, LR, LK];
             end
+
+            clearDurlofskyTensors(obj)
             
         end 
         
@@ -1154,6 +1156,9 @@ classdef SphereAssembly < handle
                 end
                 obj.gdM(6*obj.N + 9*i - 8 : 6*obj.N + 9*i, :) = [LJ, LR, LK];
             end
+
+            clearDurlofskyTensors(obj)
+            
         end
         
     end
@@ -1227,6 +1232,35 @@ classdef SphereAssembly < handle
             end
             obj.setup = setup;
             
+        end
+        
+        function clearDurlofskyTensors(obj)
+            obj.J1 = [];
+            obj.J2 = [];
+            obj.J3 = [];
+            obj.J4_93 = [];
+            obj.R0 = [];
+            obj.R3 = [];
+            obj.R4_93 = [];
+            obj.K1_39 = [];
+            obj.K2_39 = [];
+            obj.K3_39 = [];
+            obj.K4_99 = [];
+            
+            if obj.setup == 1 
+                obj.J1star = [];
+                obj.J2star = [];
+                obj.J3star = [];
+                obj.J4star93 = [];
+                obj.R1star = [];
+                obj.R2star = [];
+                obj.R3star = [];
+                obj.R4star93 = [];
+                obj.K1star39 = [];
+                obj.K2star39 = [];
+                obj.K3star39 = [];
+                obj.K4star99 = [];
+            end
         end
         
         function [Uf, varargout] = FlowField(xc, obj, flow)

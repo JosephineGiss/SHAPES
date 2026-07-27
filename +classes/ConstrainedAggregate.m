@@ -310,7 +310,7 @@ classdef (Abstract) ConstrainedAggregate < classes.SphereAssembly
             %%%
             if isempty(obj.xres)
                 getResistanceTensors(obj);
-            elseif not(obj.xres == obj.xG)
+            elseif any(not(obj.xres == obj.xG))
                 getResistanceTensors(obj);
             end
             if nargout > 1
@@ -337,10 +337,14 @@ classdef (Abstract) ConstrainedAggregate < classes.SphereAssembly
             epsilon(1,3,2) = -1;
 
             %%%
-            if or(isempty(obj.xres), not(obj.xres == obj.xG))
+            if isempty(obj.xres)
+                getResistanceTensors(obj);
+            elseif any(not(obj.xres == obj.xG))
                 getResistanceTensors(obj);
             end
-            if or(isempty(obj.xmob), not(obj.xmob == obj.xG))
+            if isempty(obj.xmob)
+                getMobilityTensors(obj);
+            elseif any(not(obj.xmob == obj.xG))
                 getMobilityTensors(obj);
             end
             if nargout > 1 
