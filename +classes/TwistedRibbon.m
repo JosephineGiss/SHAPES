@@ -1,4 +1,4 @@
-classdef Twisted_Ribbon < classes.RigidBody
+classdef TwistedRibbon < classes.RigidBody
 
     properties
         chirality; 
@@ -11,7 +11,7 @@ classdef Twisted_Ribbon < classes.RigidBody
     
     methods
         
-        function obj = Twisted_Ribbon(chirality, a, L, W, s, lambda, rho, position, setup)
+        function obj = TwistedRibbon(chirality, a, L, W, s, lambda, rho, position, setup)
             
             arguments
                 chirality (1,1) double {mustBeMember(chirality, [-1, 1])} = 1

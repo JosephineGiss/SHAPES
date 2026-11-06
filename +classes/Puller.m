@@ -1,9 +1,9 @@
 classdef Puller < classes.Swimmer
 
-    properties
+    properties (Constant)
         % properties preallocated to reproduce the swim motion of the green
         % algae Chlamydomonas reinhardtii
-        preset_alphas = [3*pi/7, 4*pi/7];
+        % using Nm = 10, and alpha = [3*pi/7, 4*pi/7].
         preset_thetas = ...
             [0.1   0.05 -0.7  -0.65 -0.55 -0.8  -0.3   -0.2   0.1   0.2;  
             -0.3   0.15  0.02 -0.1  -0.7  -0.65 -0.65  -0.65 -0.3   0;    
@@ -33,57 +33,62 @@ classdef Puller < classes.Swimmer
                 rho (1, :) double = [1030, 0]
                 position.xB (3, 1) double = [0; 0; 0]
                 position.rot (3, 3) double = eye(3)
-                position.theta (1, :) double = [0.1   0.05 -0.7 -0.65 -0.55 -0.8  -0.3   -0.2   0.1   0.2]
+                position.mirror (1,:) double = [1 -1]
+                position.theta (1, :) double = classes.Puller.preset_thetas(1,:)
                 setup.setup (1, 1) double = 0
             end
-            Nf = 2;
+            Nf = numel(alpha);
             obj@classes.Swimmer(Nf, Nm, alpha, a, l, rho, xB = position.xB,...
-                rot = position.rot, theta = position.theta, setup = setup.setup);
+                rot = position.rot, mirror = position.mirror,...
+                theta = position.theta, setup = setup.setup);
         end
         
-        function getSwimmingLaws(obj, option) 
-            % première ligne : theta
-            % deuxième ligne : theta_dot
-            
-            arguments 
+        function getSwimmingLaws(obj, option)
+
+            arguments
                 obj (1,1) classes.Puller
-                option.T (1,1) double = 2 % period (irl T = 0.02s)
-                option.preset = 1
+                option.T (1,:) double = 0.5
+                option.data cell = {}
+                option.phase (1,:) double = 0
+                option.nHarm (1,1) double = Inf
             end
-            
-            if option.preset == 1
-                % Fourier fit of the theta angles based on the experimental
-                % paper Geyer et. al 2013
-                if obj.Nm ~= 10
-                    error('The swimmer must have 2 flaggela of 10 spheres.')
+
+            Nf = obj.Nf;
+            T = option.T.* ones(1, Nf);
+            phase = option.phase.* ones(1, Nf);
+            data = option.data;
+            if isempty(data)
+                assert(all(obj.Nm == 10), "Default law requires 10 spheres per flagellum.")
+                data = repmat({classes.Puller.preset_thetas}, 1, Nf);
+            end
+            for i = 1:Nf
+                D = obj.mirror(i)*data{i};
+                [nt, nm] = size(D);
+                assert(nm == obj.Nm(i), "data{%d} must have %d columns", i, obj.Nm(i))
+                w = 2*pi/T(i);
+                C = fft(D, [], 1)/nt;
+                % nh = min(option.nHarm, floor((nt - 1)/2));
+                nh = min(option.nHarm, floor(nt/2));
+                k = (1:nh)';
+                a0 = real(C(1,:));
+                ak = 2*real(C(2:nh+1,:));
+                bk = -2*imag(C(2:nh+1,:));
+
+                if mod(nt,2) == 0 && nh == nt/2 % cosine only
+                    ak(end,:) = real(C(nh+1,:));
+                    bk(end,:) = 0;
                 end
-                thetas = obj.preset_thetas;
-                f = cell(1,obj.Nm(1));
-                for i = 1:obj.Nm(1)
-                    yfit = [thetas(:,i); thetas(:,i); thetas(1,i)];
-                    xfit = linspace(0, 2*option.T, length(yfit));
-                    [f7,~] = fit(xfit',yfit,"fourier7");
-                    f{i} = f7;
+
+                for j = 1:nm
+                    idx = obj.fl_idx(1,i) + j - 1;
+                    obj.theta_laws{1,idx} = @(t) a0(j) + ak(:,j).'*cos(k*w*(t - phase(i))) ...
+                        + bk(:,j).'*sin(k*w*(t - phase(i)));
+                    obj.theta_laws{2,idx} = @(t) w*( -(k.*ak(:,j)).'*sin(k*w*(t - phase(i))) ...
+                        + (k.*bk(:,j)).'*cos(k*w*(t - phase(i))) );
                 end
                 
-                for i = 1:obj.Nf
-                    for j = 1:obj.Nm(i)
-                        coeffs_and_freq = coeffvalues(f{j});
-                        coeffs = (-1)^(1 + i)*coeffs_and_freq(1:end - 1);
-                        w = coeffs_and_freq(end);
-                        obj.theta_laws{1, obj.fl_idx(1, i) + j - 1} = @(t) coeffs(1) + coeffs(2)*cos(w*t)...
-                            + coeffs(3)*sin(w*t) + coeffs(4)*cos(2*w*t) + coeffs(5)*sin(2*w*t) + coeffs(6)*cos(3*w*t) + coeffs(7)*sin(3*w*t)...
-                            + coeffs(8)*cos(4*w*t) + coeffs(9)*sin(4*w*t) + coeffs(10)*cos(5*w*t) + coeffs(11)*sin(5*w*t)...
-                            + coeffs(12)*cos(6*w*t) + coeffs(13)*sin(6*w*t) + coeffs(14)*cos(7*w*t) + coeffs(15)*sin(7*w*t);
-                        obj.theta_laws{2, obj.fl_idx(1, i) + j - 1} = @(t) -w*coeffs(2)*sin(w*t)...
-                            + w*coeffs(3)*cos(w*t) - 2*w*coeffs(4)*sin(2*w*t) + 2*w*coeffs(5)*cos(2*w*t) - 3*w*coeffs(6)*sin(3*w*t) + 3*w*coeffs(7)*cos(3*w*t)...
-                            - 4*w*coeffs(8)*sin(4*w*t) + 4*w*coeffs(9)*cos(4*w*t) - 5*w*coeffs(10)*sin(5*w*t) + 5*w*coeffs(11)*cos(5*w*t)...
-                            - 6*w*coeffs(12)*sin(6*w*t) + 6*w*coeffs(13)*cos(6*w*t) - 7*w*coeffs(14)*sin(7*w*t) + 7*w*coeffs(15)*cos(7*w*t);
-                    end
-                end
-                obj.ff7 = f;
             end
-            
+
         end
 
     end

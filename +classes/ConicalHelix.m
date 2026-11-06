@@ -15,10 +15,10 @@ classdef ConicalHelix < classes.RigidBody
         function obj = ConicalHelix(L, n, alpha, a, lambda, rho, shape, position, setup)
             
             arguments
-                L (1,1) double = 10
+                L (1,1) double = 15
                 n (1,1) double = 3 
-                alpha (1,1) double = 1 % arg from helix parametrisation
-                a (1,1) double = 0.1 
+                alpha (1,1) double = 0.5 % arg from helix parameterization
+                a (1,1) double = 1 
                 lambda (1,1) double = 2.5 % spacing factor
                 rho (1,1) double = 1030
                 shape.handedness (1,1) double = 1 % (1 == right-handed, -1 == left-handed)

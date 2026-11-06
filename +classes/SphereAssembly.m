@@ -17,7 +17,7 @@ classdef SphereAssembly < handle
         Stresslet;
         
         setup; % determines the environment & boundaries of the SphereAssembly
-        % O (default) : SphereAssmbly in an unbounded fluid
+        % O (default) : SphereAssembly in an unbounded fluid
         % 1 : SphereAssembly is near a plane wall placed at x = 0
     end 
     
@@ -999,6 +999,29 @@ classdef SphereAssembly < handle
         
     end
     
+    methods (Static, Hidden)
+        function out = skipCalc(newValue)
+            persistent flag
+            if isempty(flag), flag = false; end
+            if nargin > 0, flag = logical(newValue); end
+            out = flag;
+        end
+        
+        function skip = consumeSkip()
+            % Reads the flag AND sets it to false (single-use).
+            skip = classes.SphereAssembly.skipCalc();
+            classes.SphereAssembly.skipCalc(false);
+        end
+        
+        function guard = suspendCalc()
+            % Only for subclasses that modify the geometry after the parent constructor
+            % Call this immediately before obj@Parent(...). 
+            % Reactivates the calculation when 'guard' is destroyed.
+            classes.SphereAssembly.skipCalc(true);
+            guard = onCleanup(@() classes.SphereAssembly.skipCalc(false));
+        end
+    end
+
     methods (Access = protected)
         
         function DurlofskyTensors(obj)
@@ -1171,7 +1194,9 @@ classdef SphereAssembly < handle
             % a : radius of the spheres, either a scalar (monodisperse) or N components vector (polydisperse)
             % rho : mass density of the spheres, either a scalar (homogenous) or N components vector (heterogeneous)
             % setup : 0 or 1
-
+            
+            skip = classes.SphereAssembly.consumeSkip();
+            
             if nargin == 0
                 xx = [[0;0;0], [5;0;0]];         
                 a = 1;
@@ -1223,6 +1248,14 @@ classdef SphereAssembly < handle
             obj.a = num2cell(a);
             obj.rho = num2cell(rho);
             
+            obj.setup = setup;
+            
+            %%%% only for subclasses that modify the geometry after the parent constructor
+            if skip
+                return
+            end
+            %%%%
+            
             DurlofskyTensors(obj);
             if setup == 0
                 Calculation_gdM(obj);
@@ -1230,7 +1263,6 @@ classdef SphereAssembly < handle
                 WallTensors(obj)
                 Calculation_gdM_Wall(obj)
             end
-            obj.setup = setup;
             
         end
         
@@ -1280,7 +1312,7 @@ classdef SphereAssembly < handle
                 error(message)
             end
 
-            % ambiant flow (lab frame)
+            % ambient flow (lab frame)
             u_inf = @(x) flow.U0 + cross(flow.Omega_inf, x)...
                 + aux.recTransfo(flow.E_inf)*x; 
 

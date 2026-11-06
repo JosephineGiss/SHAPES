@@ -4,8 +4,8 @@ classdef Disk < classes.RigidBody
         rad;        % radius of the disk
         dAB;        % minimal distance between adjacent spheres
         N_circles;  % number of circles
-        dr_eff;     % real spacement between circles
-        dAB_eff;    % real spacement between spheres for each circle
+        dr_eff;     % real spacing between circles
+        dAB_eff;    % real spacing between spheres for each circle
     end
 
     methods 

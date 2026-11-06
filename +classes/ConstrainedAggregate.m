@@ -77,7 +77,7 @@ classdef (Abstract) ConstrainedAggregate < classes.SphereAssembly
 
         getVelocities(obj, FText, xref, quat, time, flow)
 
-        Dynamics(obj, FText, flow, CI, options) % à mettre dans SphereAssembly, se renseigner pour savoir si les méthodes abstraites doivent être réécrites tant qu'elles ne sont pas concrètes
+        Dynamics(obj, FText, flow, CI, options) 
         Stokes_Forces(obj, t, y, FText, mu, U0, Omega_inf, E_inf)
 
         getFTS(obj, u_ref , omega_ref, flow)
@@ -282,9 +282,9 @@ classdef (Abstract) ConstrainedAggregate < classes.SphereAssembly
             
         end
         function varargout = getMobilityTensors(obj)
-            obj.a_mob = inv(obj.A - obj.Bt*(obj.C\obj.B)); % 5.22 Kim & Karilla
-            obj.b_mob = - (obj.C\obj.B)/(obj.A - obj.Bt*(obj.C\obj.B)); % 5.23 Kim & Karilla
-            obj.c_mob = inv(obj.C - obj.B*(obj.A\obj.Bt)); % 5.24 Kim & Karilla
+            obj.a_mob = inv(obj.A - obj.Bt*(obj.C\obj.B)); % 5.22 Kim & Karrila
+            obj.b_mob = - (obj.C\obj.B)/(obj.A - obj.Bt*(obj.C\obj.B)); % 5.23 Kim & Karrila
+            obj.c_mob = inv(obj.C - obj.B*(obj.A\obj.Bt)); % 5.24 Kim & Karrila
             obj.xmob = obj.xres;
 
             if nargout > 0
@@ -358,7 +358,7 @@ classdef (Abstract) ConstrainedAggregate < classes.SphereAssembly
         end
         function varargout = translationTheorem_RT(obj, x_new)
             % from Happel & Brenner 1983 
-            % and from Kim & Karilla 1991 (5.2.3)
+            % and from Kim & Karrila 1991 (5.2.3)
 
             % x_new : point from which the function is going to compute the
             % resistance tensors
@@ -380,7 +380,7 @@ classdef (Abstract) ConstrainedAggregate < classes.SphereAssembly
             
         end
         function varargout = translationTheorem_MT(obj, x_new)
-            % from Kim & Karilla 1991 (5.3.1)
+            % from Kim & Karrila 1991 (5.3.1)
             
             % x_new : point from which the function is going to compute the
             % mobility tensors
@@ -400,10 +400,92 @@ classdef (Abstract) ConstrainedAggregate < classes.SphereAssembly
             end
         end
         
+        function [U, V, W, uB, omegaB] = getFlowField(obj, t, FText, xref, qref, X, Y, flow, option)
+            % Velocity field on a plane in space (laboratory coordinate system).
+            % Available planes (option.plane): "xy", "xz", "yz" 
+            
+            arguments % everything given in the lab frame
+                obj (1,1) classes.ConstrainedAggregate % N independent spheres
+                t (1,1) double % time (to get the right angles evolution)
+                FText (6,1) double % buoyancy force in the lab frame (i.e e_i basis)
+                xref (3,1) double = zeros(3,1) % reference position of the object
+                qref (4,1) double = [1 0 0 0] % reference quaternions
+                X double = NaN
+                Y double = NaN
+                flow.mu (1,1) double = 1
+                flow.U0 (3,1) double = zeros(3,1)
+                flow.Omega_inf (3,1) double = zeros(3,1)
+                flow.E_inf (9,1) double = zeros(9,1)
+                option.margin (1,1) double = 1.1
+                option.plane (1,1) string {mustBeMember(option.plane, ["xy","xz","yz"])} = "xy"
+                option.height (1,1) double = 0
+            end
+            
+            if isscalar(X) && isnan(X)
+                error("Choose a grid [X,Y].")
+            end
+            
+            % Velocities and forces/torques
+            [uB, omegaB] = getVelocities(obj, FText, xref, qref, t, ...
+                "mu", flow.mu, "U0", flow.U0, ...
+                "Omega_inf", flow.Omega_inf, "E_inf", flow.E_inf);
+            getFTS(obj, uB, omegaB, ...
+                "mu", flow.mu, "U0", flow.U0, ...
+                "Omega_inf", flow.Omega_inf, "E_inf", flow.E_inf)
+            
+            [ni, nj] = size(X);
+            U = zeros(ni, nj);
+            V = zeros(ni, nj);
+            W = zeros(ni, nj);
+            
+            % If there is a wall, cancel the flow on the other side 
+            hasWall = (obj.setup == 1);
+            if hasWall
+                sphereRight = obj.x{1}(1) > 0;
+            end
+            
+            for i = 1:ni
+                for j = 1:nj
+                    if option.plane == "xy"
+                        x_c = [X(i,j); Y(i,j); option.height];
+                    elseif option.plane == "xz"
+                        x_c = [X(i,j); option.height; Y(i,j)];
+                    elseif option.plane == "yz"
+                        x_c = [option.height; X(i,j); Y(i,j)];
+                    end
+                    % cancels the flow at the location of the spheres
+                    overlap = false;
+                    for k = 1:obj.N
+                        if norm(x_c - obj.x{k})^2 <= (option.margin*obj.a{k})^2
+                            overlap = true;
+                            break
+                        end
+                    end
+                    
+                    wrongSide = false;
+                    if hasWall
+                        if sphereRight && x_c(1) < 0
+                            wrongSide = true;
+                        elseif ~sphereRight && x_c(1) > 0
+                            wrongSide = true;
+                        end
+                    end
+                    
+                    if overlap || wrongSide
+                        U(i,j) = NaN; V(i,j) = NaN; W(i,j) = NaN;
+                    else
+                        [U(i,j), V(i,j), W(i,j)] = FlowField(x_c, obj, ...
+                            "mu", flow.mu, "U0", flow.U0, ...
+                            "Omega_inf", flow.Omega_inf, "E_inf", flow.E_inf);
+                    end
+                end
+            end
+        end
+        
         function Show(obj, color, settings)
             
             arguments % everything given in the lab frame
-                obj (1,1) classes.ConstrainedAggregate % N interdependant spheres
+                obj (1,1) classes.ConstrainedAggregate % N interdependent spheres
                 color (:, 3) double = [0.75, 0.7, 0.65]
                 settings.preset string {mustBeMember(settings.preset, ["default", "sketch"])} = "default"
                 settings.center_of_mass string {mustBeMember(settings.center_of_mass, ["on", "off"])} = "off"

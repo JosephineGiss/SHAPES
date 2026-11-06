@@ -69,13 +69,13 @@ classdef RigidBody < classes.ConstrainedAggregate
 
                 % CI.angles (3,1) double = [0; pi/4; 0] % [phi; theta; psi]
                 % theta must not be zero (or need to add a new
-                % parametrisation)
+                % parameterization)
                 % angles MUST be specified if compute_angles = "yes"
                 % I've included Euler angles into compute_angles
 
                 CI.q0 (4,1) double = aux.matrice_to_quaternion(obj.Rot_init);
                 % DO NOT forget to change the Rot_init property if the
-                % inital configuration != reference configuration
+                % initial configuration != reference configuration
                 % or assign the corresponding q0
 
                 CI.xG0 (3,1) double = obj.xG
@@ -85,7 +85,7 @@ classdef RigidBody < classes.ConstrainedAggregate
                 % the three remaining components are Euler angles : [phi; theta; psi]
                 % in the initial configuration
                 % if compute_angles is set to "yes", q0 is automatically
-                % calculted from Euler angles and so does not require to be
+                % calculated from Euler angles and so does not require to be
                 % set (will be rewritten otherwise)
             end
 
@@ -106,7 +106,7 @@ classdef RigidBody < classes.ConstrainedAggregate
         function [uG, omegaG] = getVelocities(obj, FText, xG, quat, ~, flow) % lab frame + non inertial %%% check if calling the method without times works
             
             arguments % everything given in the lab frame
-                obj (1, 1) classes.RigidBody % N independant spheres
+                obj (1, 1) classes.RigidBody % N independent spheres
                 FText (6, 1) double  % buoyancy force in the lab frame (i.e e_i basis) 6x1 column vector
                 xG (3, 1) double % center of mass of the solid
                 quat (4, 1) double % quaternions
@@ -117,7 +117,7 @@ classdef RigidBody < classes.ConstrainedAggregate
                 flow.E_inf (9, 1) double = zeros(9,1)
             end
 
-            % ambiant flow (lab frame)
+            % ambient flow (lab frame)
             u_inf = @(x) flow.U0 + cross(flow.Omega_inf, x)...
                 + aux.recTransfo(flow.E_inf)*x; 
             
@@ -193,7 +193,7 @@ classdef RigidBody < classes.ConstrainedAggregate
                 flow.E_inf (9,1) double = zeros(9,1)
             end
             
-            % ambiant flow (lab frame)
+            % ambient flow (lab frame)
             u_inf = @(x) flow.U0 + cross(flow.Omega_inf, x)...
                 + aux.recTransfo(flow.E_inf)*x; 
             
@@ -237,7 +237,7 @@ classdef RigidBody < classes.ConstrainedAggregate
             end
         end
         
-        function y_dot = Stokes_Forces(obj, ~, y, FText, mu, U0, Omega_inf, E_inf)
+        function y_dot = Stokes_Forces(obj, t, y, FText, mu, U0, Omega_inf, E_inf)
             % differential equation to solve the dynamics
             % y is a column vector
             % y(1:4) quaternion q
@@ -257,7 +257,7 @@ classdef RigidBody < classes.ConstrainedAggregate
 
             % Euler angles option
             if length(y) == 10
-                % matrix that caracterise the time evolution of Euler angles
+                % matrix that characterizes the time evolution of Euler angles
                 invEA_mat = [sin(y(10))/sin(y(9)), cos(y(10))/sin(y(9)), 0;...
                     cos(y(10)), -sin(y(10)), 0;...
                     -sin(y(10))*cos(y(9))/sin(y(9)), -cos(y(10))*cos(y(9))/sin(y(9)), 1];
@@ -265,10 +265,10 @@ classdef RigidBody < classes.ConstrainedAggregate
                 dangles_dt = invEA_mat*OmegaG;
 
                 y_dot = [dq_dt; dr_dt; dangles_dt];
-                % display(t)
+                disp("t = " + t)
             elseif length(y) == 7
                 y_dot = [dq_dt; dr_dt];
-                % display(t)
+                disp("t = " + t)
             end
 
         end

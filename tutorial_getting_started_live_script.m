@@ -97,7 +97,7 @@ disp(prop_horizontal.B);
 rho_f = 0997;   % density of the fluid
 rho_p = 1000;   % density of the particle
 FText = [0; 0; prop.N*(4/3)*pi*prop.a{1}^3*(rho_p - rho_f)*(-9.81); 0; 0; 0]; % external forces, torques
-q_init = matrice_to_quaternion(aux.rot_u([0 0 1], theta)); % orientation of the particle at the start of the simulation
+q_init = aux.matrice_to_quaternion(aux.rot_u([0 0 1], theta)); % orientation of the particle at the start of the simulation
 
 t_step = 0.05;
 t_start = 0;

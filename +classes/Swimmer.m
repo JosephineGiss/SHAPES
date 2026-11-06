@@ -19,13 +19,67 @@ classdef Swimmer < classes.ConstrainedAggregate
         % 1st row of the ith column is the index of the first sphere that 
         % is part of the ith flagellum, 2nd row is for the last sphere
         fl_idx; 
+
+        mirror; % flagella parameterization can be mirrored
     end
 
     properties (Access = protected)
+        % active forcing and velocities
+        Fa;
+        Ta;
         theta_v; 
         theta_omega; 
-
-        ff7;
+    end
+    
+    methods (Static, Access = protected)
+        
+        function [x, t_i] = flagellaGeometry(xB, rot, a1, alpha, theta, lseg, fl_idx)
+            Nf = size(fl_idx, 2);
+            N = fl_idx(2, end);
+            x = zeros(3, N);  
+            x(:,1) = xB;
+            t_i = cell(1, N);   
+            t_i{1} = rot;
+            for i = 1:Nf
+                idx = fl_idx(1,i):fl_idx(2,i);
+                ang = alpha(i) + cumsum(theta(idx - 1)); % absolute angle of each segment
+                T = rot(:,1)*cos(ang) + rot(:,2)*sin(ang);   
+                l0 = rot(:,1)*cos(alpha(i)) + rot(:,2)*sin(alpha(i));
+                x(:,idx) = xB + a1*l0 + cumsum(T*lseg, 2);
+                t_i(idx) = num2cell(T, 1);
+            end
+        end
+        
+        function theta = normalizeTheta(theta, Nm, mirror)
+            Nf = numel(Nm);
+            if isempty(theta), theta = 0; end
+            assert (iscell(theta) || (isnumeric (theta) && isvector(theta)), ...
+                "theta must be a scalar, a vector, or a cell.")
+            if iscell(theta)  
+                assert(numel(theta) == Nf, "theta cell must contain values for each flagellum.")
+                for i = 1:Nf
+                    if isempty(theta{i})
+                        theta{i} = 0;
+                    end
+                    assert(isnumeric(theta{i}), "All theta values must be scalar or empty.")
+                    if isscalar(theta{i})
+                        theta{i} = theta{i}*ones(1, Nm(i));
+                    end
+                    assert(numel(theta{i}) == Nm(i), "theta{%d} must have %d values", i, Nm(i))
+                    theta{i} = theta{i}(:).';
+                end
+                theta = [theta{:}];
+            elseif isscalar(theta)
+                theta = theta*ones(1, sum(Nm));
+            elseif numel(theta) == sum(Nm)           
+                theta = theta(:).';
+            elseif all(Nm == numel(theta))        
+                theta = cell2mat(arrayfun(@(i) mirror(i)*theta(:).', 1:Nf, 'UniformOutput', false));
+            else
+                error("Theta length is incompatible with Nm")
+            end
+        end
+        
     end
     
     methods
@@ -41,29 +95,23 @@ classdef Swimmer < classes.ConstrainedAggregate
                 rho (1, :) double = [1030, 0]
                 position.xB (3, 1) double = [0; 0; 0]
                 position.rot (3, 3) double = eye(3)
-                position.theta (1, :) double = [0.1   0.05 -0.7 -0.65 -0.55 -0.8  -0.3   -0.2   0.1   0.2]
+                position.mirror (1,:) double = ones(1, Nf)
+                position.theta = []
                 setup.setup (1, 1) double = 0
             end
             
             if isscalar(Nm) % same number of spheres per flagella
                 Nm = Nm*ones(1, Nf);
-                if length(position.theta) == Nm(1)
-                    theta = position.theta;
-                    position.theta = zeros(1, sum(Nm));
-                    idx = cumsum(Nm);
-                    for i = 1:Nf
-                        position.theta(idx(i) - Nm(1) + 1:idx(i)) = (-1)^(-1 + i)*theta;
-                    end
-                end
             end
+            assert(numel(Nm) == Nf, "You are reporting more spheres per flagellum than there are flagella.")
+            assert(numel(position.mirror) == Nf)
+            position.theta = classes.Swimmer.normalizeTheta(position.theta, Nm, position.mirror);
             
             N = sum(Nm) + 1;
-            xx = zeros(3,N);
-            t_i = cell(1,N);
             fl_idx = [cumsum(Nm) - Nm + 2; cumsum(Nm) + 1];
             
             if length(rho) == 2
-                rho = [max(rho), min(rho)*ones(1, N - 1)];
+                rho = [rho(1), rho(2)*ones(1, N - 1)];
             end
 
             if isscalar(position.theta)
@@ -93,32 +141,7 @@ classdef Swimmer < classes.ConstrainedAggregate
                 error("Please enter all the contact angles (alpha variables)")
             end
 
-            xx(:,1) = zeros(3,1); % coordinates of the body
-            
-            % body frame
-            t1B = [1; 0; 0];
-            t2B = [0; 1; 0];
-            
-            % placing spheres
-            for i = 1:Nf
-                % vector from the center of the body to the attachment
-                % point of a given flagella 
-                l0 = cos(alpha(i))*t1B + sin(alpha(i))*t2B; 
-                for j = fl_idx(1, i):fl_idx(2, i)
-                    t_i{j} = cos(alpha(i) + sum(position.theta(fl_idx(1, i) - 1:j - 1)))*t1B...
-                        + sin(alpha(i) + sum(position.theta(fl_idx(1, i) - 1:j - 1)))*t2B;
-                    sum_ti = zeros(3,1);
-                    for k = fl_idx(1, i):j
-                        sum_ti = sum_ti + t_i{k};
-                    end
-                    xx(:,j) = a(1)*l0 + l*sum_ti;
-                end
-            end
-            
-            % readjusting position using the body as the reference
-            for k = 1:N
-                xx(:,k) = position.xB + position.rot*xx(:,k);
-            end
+            [xx, t_i] = classes.Swimmer.flagellaGeometry(position.xB, position.rot, a(1), alpha, position.theta, l, fl_idx);
             
             obj@classes.ConstrainedAggregate(xx, a, rho, setup.setup);
             
@@ -130,26 +153,25 @@ classdef Swimmer < classes.ConstrainedAggregate
             obj.theta = position.theta;
             obj.theta_dot = zeros(1, N - 1);
             obj.fl_idx = fl_idx;
+            obj.mirror = position.mirror;
 
             obj.theta_v = cell(1, N);
             obj.theta_v{1} = zeros(3, 1);
             obj.theta_omega = cell(1, N);
             obj.theta_omega{1} = zeros(3, 1);
             
-            % first cell contains the rotation matrix i.e. the expression
-            % of the mobile frame basis vectors (column 1 is t1G etc ...)
-            t_i{1} = position.rot;
+            obj.Rot_init = position.rot;
             obj.t_i = t_i;
             
         end
         
         function setPosition(obj, xB, rot, t)
-            % modify obj properties in order to repostion the swimmer
+            % modify obj properties in order to reposition the swimmer
             % according to its new x0, rotation and swimming law(t) in the
             % lab frame
             
             % properties modified : xB, x, xG, t_i, theta, theta_dot, 
-            % theta_v, theta_omega, gd_M
+            % theta_v, theta_omega, gdM
             
             obj.xB = xB;
             obj.x{1} = xB;
@@ -161,56 +183,41 @@ classdef Swimmer < classes.ConstrainedAggregate
             end
             
             theta_om = zeros(1, obj.N);
+            
+            [x, t_i] = classes.Swimmer.flagellaGeometry(xB, rot, obj.a{1}, obj.alpha, obj.theta, obj.l, obj.fl_idx); 
+            obj.x = num2cell(x,1); 
+            obj.t_i = t_i;
 
             for i = 1:obj.Nf
                 
-                l0 = cos(obj.alpha(i))*rot(:,1) + sin(obj.alpha(i))*rot(:,2);
-                theta_om(obj.fl_idx(1, i):obj.fl_idx(2, i)) = cumsum(obj.theta_dot(obj.fl_idx(1, i) - 1:obj.fl_idx(2, i) - 1));
-                
-                for j = obj.fl_idx(1, i):obj.fl_idx(2, i) % spheres indexes of flagellum i
-                    obj.t_i{j} = cos(obj.alpha(i) + sum(obj.theta(obj.fl_idx(1, i) - 1:j - 1)))*rot(:,1)...
-                        + sin(obj.alpha(i) + sum(obj.theta(obj.fl_idx(1, i) - 1:j - 1)))*rot(:,2);
-                    
-                    sum_ts = zeros(3,1);
-                    for k = obj.fl_idx(1, i):j
-                        sum_ts = sum_ts + obj.t_i{k};
-                    end
-                    
-                    obj.x{j} = obj.xB + obj.a{1}*l0 + obj.l*sum_ts;
-                end
+                idx = obj.fl_idx(1, i):obj.fl_idx(2, i);
+                theta_om(idx) = cumsum(obj.theta_dot(idx - 1));
+                obj.theta_omega(idx) = num2cell(rot(:,3)*theta_om(idx), 1);
+                T = cell2mat(obj.t_i(idx));
+                obj.theta_v(idx) = num2cell(cumsum(obj.l.*cross(rot(:,3).*theta_om(idx), T), 2), 1);
 
             end
             obj.xG = sum([obj.m{:}].*cell2mat(obj.x)./obj.totalMass, 2);
 
-            for i = 1:obj.N
-                obj.theta_omega{i} = theta_om(i)*rot(:,3);
-            end
-            
-            for i = 1:obj.Nf
-                for j = obj.fl_idx(1, i):obj.fl_idx(2, i) % spheres indexes of flagellum i
-                    sum_thetatj = zeros(3,1);
-                    for k = obj.fl_idx(1, i):j
-                        sum_thetatj = sum_thetatj + cross(obj.theta_omega{k}, obj.t_i{k});
-                    end
-                    obj.theta_v{j} = obj.l*sum_thetatj;
+            % we skip the following when considering a system of aggregates
+            if ~obj.calledFromIH
+                % updated grand resistance matrix
+                DurlofskyTensors(obj); 
+                if obj.setup == 0 
+                    Calculation_gdM(obj); 
+                elseif obj.setup == 1
+                    WallTensors(obj); 
+                    Calculation_gdM_Wall(obj);
                 end
             end
-            
-            % updated grand resistance matrix
-            DurlofskyTensors(obj); 
-            if obj.setup == 0
-                Calculation_gdM(obj); 
-            elseif obj.setup == 1
-                WallTensors(obj);
-                Calculation_gdM_Wall(obj); 
-            end
+            obj.calledFromIH = false;
 
         end
         
         function [uB, omegaB] = getVelocities(obj, FText, xB, qB, t, flow) % flagella mass neglected
 
             arguments % everything given in the lab frame
-                obj (1,1) classes.Swimmer % N interdependant spheres
+                obj (1,1) classes.Swimmer 
                 FText (6,1) double % external forces and torques acting on the swimmer
                 xB (3,1) double % body position of the swimmer
                 qB (4,1) double % quaternions
@@ -220,12 +227,12 @@ classdef Swimmer < classes.ConstrainedAggregate
                 flow.Omega_inf (3,1) double = zeros(3,1)
                 flow.E_inf (9,1) double = zeros(9,1)
             end
-            % ambiant flow (lab frame)
+            % ambient flow (lab frame)
             u_inf = @(x) flow.U0 + cross(flow.Omega_inf, x)...
                 + aux.recTransfo(flow.E_inf)*x; 
             
             % Update the positions of the spheres 
-            Rot = quaternion_to_matrice(qB); % updated rotation state
+            Rot = aux.quaternion_to_matrice(qB); % updated rotation state
             setPosition(obj, xB, Rot, t)
             
             % extra terms for forces and torques arising from swimming
@@ -237,7 +244,7 @@ classdef Swimmer < classes.ConstrainedAggregate
             for i = 1:obj.N
                 for j = 1:obj.N
                     F_theta = F_theta + (R_FU{i,j}*obj.theta_v{j} + R_FOmega{i,j}*obj.theta_omega{j});
-                    T_theta = T_theta + (hat_(obj.x{i} - xB)*R_FU{i,j} + R_TU{i,j})*obj.theta_v{j} + (hat_(obj.x{i} - xB)*R_FOmega{i,j} + R_TOmega{i,j})*obj.theta_omega{j};
+                    T_theta = T_theta + (aux.hat_(obj.x{i} - xB)*R_FU{i,j} + R_TU{i,j})*obj.theta_v{j} + (aux.hat_(obj.x{i} - xB)*R_FOmega{i,j} + R_TOmega{i,j})*obj.theta_omega{j};
                 end
             end
             FTtheta = [F_theta; T_theta];
@@ -250,78 +257,21 @@ classdef Swimmer < classes.ConstrainedAggregate
             % solid velocities in the lab frame
             uB = sol(1:3) + u_inf(xB); 
             omegaB = sol(4:6) + flow.Omega_inf;
-            %------------------------------------%
         end
-        function [U, V, W, uB, omegaB] = getFlowField(obj, t, FText, xB, qB, X, Y, flow, option) 
+        function getFTS(obj, uB, omegaB, flow) 
             
             arguments % everything given in the lab frame
-                obj (1,1) classes.Swimmer % N independant spheres
-                t (1,1) double % time (to get the right angles evolution)
-                FText (6,1) double  % buoyancy force in the lab frame (i.e e_i basis) 6x1 column vector
-                xB (3,1) double = zeros(3,1) % body position of the swimmer
-                qB (4,1) double = [1 0 0 0] % quaternions
-                X double = NaN
-                Y double = NaN
-                flow.mu (1,1) double = 1 % in non inertial cases, mu is out of the equations
+                obj (1,1) classes.Swimmer % N independent spheres
+                uB (3,1) double = zeros(3,1) % velocity of the body
+                omegaB (3,1) double = zeros(3,1) % rotation of the body
+                flow.mu (1,1) double = 1 
                 flow.U0 (3,1) double = zeros(3,1)
                 flow.Omega_inf (3,1) double = zeros(3,1)
                 flow.E_inf (9,1) double = zeros(9,1)
-                option.margin (1,1) double = 1.1
-            end
-            if isnan(X)
-                [X, Y] = meshgrid(-10*obj.a{1} + xB(1) : obj.a{1}/2 : 10*obj.a{1} + xB(1), -10*obj.a{1} + xB(2) : obj.a{1}/2 : 10*obj.a{1} + xB(2));
             end
             
-            [uB, omegaB] = getVelocities(obj, FText, xB, qB, t,...
-                    "mu", flow.mu, "U0", flow.U0,...
-                    "Omega_inf", flow.Omega_inf, "E_inf", flow.E_inf);
-            getFTS(obj, uB, omegaB)
-            
-            [ni, nj] = size(X);
-            U = zeros(ni, nj);
-            V = zeros(ni, nj);
-            W = zeros(ni, nj);
-            % if there is a wall, cancel the flow on the other side 
-            if obj.setup == 1
-                other_side_of_the_wall_condition = gt(obj.x{1}(1),0);
-            else
-                other_side_of_the_wall_condition = NaN;
-            end
-            for i = 1:ni
-                for j = 1:nj
-                    x_c = [X(i,j); Y(i,j); xB(3)];
-                    overlap_condition = zeros(1, obj.N);
-                    % cancels the flow at the location of the spheres
-                    for k = 1:obj.N
-                        overlap_condition(k) = norm(x_c - obj.x{k})^2 <= (option.margin*obj.a{k})^2; % marge de 10%
-                    end
-                    if any(overlap_condition)
-                        U(i,j) = NaN;
-                        V(i,j) = NaN;
-                        W(i,j) = NaN;
-                    elseif and(other_side_of_the_wall_condition == true, lt(X(i,j), 0))
-                        % if the swimmer is on the "right" side of the wall
-                        U(i,j) = NaN;
-                        V(i,j) = NaN;
-                        W(i,j) = NaN;
-                    elseif and(other_side_of_the_wall_condition == false, gt(X(i,j), 0))
-                        % if the swimmer is on the "left" side of the wall
-                        U(i,j) = NaN;
-                        V(i,j) = NaN;
-                        W(i,j) = NaN;
-                    else
-                        [U(i,j), V(i,j), W(i,j)] = FlowField(x_c, obj,...
-                            "mu", flow.mu, "U0", flow.U0,...
-                            "Omega_inf", flow.Omega_inf, "E_inf", flow.E_inf);
-                    end
-                end
-            end
-        end
-        function getFTS(obj, uB , omegaB) %%% pb: comment sont déterminées les theta_v et theta_omega sans l'info du temps ? 
-            % disturbance flow
-            
-            % % ambiant flow (lab frame)
-            % u_inf = @(x) U0 + cross(Omega_inf, x) + SphereAssembly.RecTransfo(E_inf)*x; % E vector into matrix  % lab frame
+            % ambient flow (lab frame)
+            u_inf = @(x) flow.U0 + cross(flow.Omega_inf, x) + aux.recTransfo(flow.E_inf)*x; 
             
             gdU = zeros(3*obj.N,1);
             gdOmega = zeros(3*obj.N,1);
@@ -329,81 +279,24 @@ classdef Swimmer < classes.ConstrainedAggregate
             
             % spheres velocity
             for i=1:obj.N
-                obj.u{i} = uB - hat_(obj.x{i})*omegaB + obj.theta_v{i};
+                obj.u{i} = uB - aux.hat_(obj.x{i} - obj.xB)*omegaB + obj.theta_v{i};
                 obj.omega{i} = omegaB + obj.theta_omega{i};
             end 
-
+            
             for i = 1:obj.N
-                gdU(3*i-2:3*i) = obj.u{i};
-                gdOmega(3*i-2:3*i) = obj.omega{i};
+                gdU(3*i-2:3*i) = obj.u{i} - u_inf(obj.x{i});
+                gdOmega(3*i-2:3*i) = obj.omega{i} - flow.Omega_inf;
+                gdE(9*i-8:9*i) = zeros(9,1) - flow.E_inf;
             end
-        
-            res = obj.gdM\[gdU;gdOmega;gdE];
-   
+            
+            res = ((1/flow.mu)*obj.gdM)\[gdU;gdOmega;gdE];
+            
             for i = 1:obj.N
                 obj.Force{i} = res(3*i - 2:3*i);
                 obj.Torque{i} = res(3*obj.N + 3*i - 2:3*obj.N + 3*i);
                 obj.Stresslet{i} = res(6*obj.N + 9*i - 8:6*obj.N + 9*i);
-            end 
-        end
-
-        function P = PowerOutput(obj, t, xB, qB) % WIP, need FText in input arg + updated getVelocities arg
-            if and(nargin == 2, obj.setup == 0)
-                xB = obj.xB;
-                qB = matrice_to_quaternion(obj.t_i{1});
             end
-            [uB, omegaB] = getVelocities(obj, t, xB, qB);
-            getFTS(obj, uB, omegaB)
-            
-            hydro_forces = -cell2mat(obj.Force);
-            hydro_torques = -cell2mat(obj.Torque);
 
-            reaction_forces = zeros(3, obj.N);
-            % segment_torques = zeros(3, obj.N);
-            torque_t1 = zeros(3, obj.N);
-            torque_t2 = zeros(3, obj.N);
-            torque_t3 = zeros(3, obj.N);
-            crosslf = zeros(3, obj.N);
-            crosslsumf = zeros(3, obj.N);
-            
-            for i = 2:obj.N
-                crosslf(:, i) = cross(obj.l*obj.t_i{i}, hydro_forces(:, i));
-            end
-            
-            for n = 1:obj.Nf
-                start_idx = obj.fl_idx(1, n);
-                end_idx = obj.fl_idx(2, n);
-                for i = start_idx:end_idx
-                    reaction_forces(:, i) = - sum(hydro_forces(:, i:end_idx), 2);
-                    torque_t1(:, i) = - sum(hydro_torques(:, i:end_idx), 2);
-                    torque_t2(:, i) = - sum(crosslf(:, i:end_idx), 2);
-                end
-                for i = start_idx:end_idx - 1
-                    crosslsumf(:, i) = cross(obj.l*obj.t_i{i}, sum(reaction_forces(:, i + 1:end_idx),2));
-                end
-            end
-            
-            % for i = 2:obj.N - 1
-            %     crosslsumf(:, i) = cross(obj.t_i{i}, reaction_forces(:, i + 1:end));
-            % end
-
-            for n = 1:obj.Nf
-                start_idx = obj.fl_idx(1, n);
-                end_idx = obj.fl_idx(2, n);
-                for i = start_idx:end_idx
-                    torque_t3(:, i) = sum(crosslsumf(:, i:end_idx), 2);
-                end
-            end
-            
-            segment_torques = torque_t1 + torque_t2 + torque_t3;
-
-            cdottt = zeros(1, obj.N);
-
-            for i = 2:obj.N
-                cdottt(i) = dot(segment_torques(:, i), obj.theta_dot(i - 1)*obj.t_i{1}(:,3));
-            end
-            P = sum(cdottt);
-            
         end
 
         function [t_out,y_out] = Dynamics(obj, FText, flow, CI, options)
@@ -411,8 +304,6 @@ classdef Swimmer < classes.ConstrainedAggregate
             arguments % everything given in the lab frame
                 
                 obj (1,1) classes.Swimmer 
-                % Resistance tensors precalculated in the reference frame (Rot_init = eye(3))
-                % Sphere positions are evaluated thanks to X_ID and Rot(t)
 
                 FText (:,1) double = zeros(6,1) % buoyancy force in the lab frame (i.e e_i basis)
                 flow.mu (1,1) double = 1
@@ -420,96 +311,76 @@ classdef Swimmer < classes.ConstrainedAggregate
                 flow.Omega_inf (3,1) double = zeros(3,1)
                 flow.E_inf (9,1) double = zeros(9,1)
 
-                CI.qB (4,1) double = matrice_to_quaternion(obj.Rot_init);
+                CI.qB (4,1) double = aux.matrice_to_quaternion(obj.Rot_init);
                 % DO NOT forget to change the Rot_init property if the
-                % inital configuration != reference configuration
+                % initial configuration != reference configuration
                 % or assign the corresponding q0
                 
                 CI.xB (3,1) double = obj.xB
                 
                 options.tspan double = 0:0.04:100
-                % options.compute_angles (4,1) double = [0;0;0;0]
-                % % 1st component is 0 ("no") or 1 ("yes")
-                % % the three remaining components are Euler angles : [phi; theta; psi]
-                % % in the initial configuration
-                % % if compute_angles is set to "yes", q0 is automatically
-                % % calculted from Euler angles and so does not require to be
-                % % set (will be rewritten otherwise)
             end
             
             CI_ = [CI.qB; CI.xB];
             opts = odeset('RelTol',10^(-6),'AbsTol',10^(-6));
             
-            % [t_out,y_out] = ode45(@(t,y) Swimmer_Forces(obj, t, y, f, flow.mu, flow.U0, flow.Omega_inf, flow.E_inf), options.tspan, CI_, opts);
             [t_out,y_out] = ode45(@(t,y) Stokes_Forces(obj, t, y, FText,...
                 flow.mu, flow.U0, flow.Omega_inf, flow.E_inf),...
                 options.tspan, CI_, opts);
             
         end
-
         function y_dot = Stokes_Forces(obj, t, y, FText, mu, U0, Omega_inf, E_inf)
             % differential equation to solve the dynamics
             % y is a column vector
             % y(1:4) quaternion qB
             % y(5:7) coordinates of the body xB
-            % if computed_angles == "yes", y(8:10) Euler angles
-            % y(8) = phi, y(9) = theta, y(10) = psi
             
             [uB, omegaB] = getVelocities(obj, FText, y(5:7), y(1:4), t,...
                     "mu", mu, "U0", U0, "Omega_inf", Omega_inf, "E_inf", E_inf);
-
+            
             % outputs
-            dq_dt = quaternion_dot(y(1:4), omegaB, "lab"); % new rotation matrix
+            dq_dt = aux.quaternion_dot(y(1:4), omegaB, "lab"); % new rotation matrix
             dr_dt = uB; % translational velocity in the lab frame
             
-            % OmegaG = Rot'*omegaG;
-            %-------------------------------------
-            
             y_dot = [dq_dt; dr_dt];
-
-            display(t)
-            % display([t, obj.theta(1), obj.theta_dot(1)])
+            
+            disp("t = " + t)
         end
         
-        function Animation(obj, t_out, y_out, C, Video) % 
+        function Animation(obj, t_out, y_out, color, video) 
             arguments
                 obj (1,1) classes.Swimmer
                 t_out double
                 y_out double
-                C.color double = []
-                Video.option (1,1) string = "no"
-                Video.filename (1,1) string = "video_cyl"
-                Video.format (1,1) string = "mp4"
-                Video.profile (1,1) string = "MPEG-4"
-                Video.framerate (1,1) {mustBeNumeric} = 25
-                Video.orient (1,2) double = [-37.5,30]
-                Video.layout (1,1) string {mustBeMember(Video.layout,["fixed", "mobile"])} = "mobile"
+                color double = [0.75, 0.7, 0.65]
+                video.option (1,1) string = "no"
+                video.filename (1,1) string = "video_cyl"
+                video.format (1,1) string = "mp4"
+                video.profile (1,1) string = "MPEG-4"
+                video.framerate (1,1) {mustBeNumeric} = 25
+                video.orient (1,2) double = [-37.5,30]
+                video.layout (1,1) string {mustBeMember(video.layout,["fixed", "mobile"])} = "mobile"
             end
 
-            if isempty(C.color)
-                C.color = [1 1 1].*ones(obj.N,1);
+            if all(size(color) == [1,3])
+                color = color.*ones(obj.N,1);
             end
             
             T = length(t_out); % number of time steps
-            [X0,Y0,Z0] = sphere(10);
+            [X0,Y0,Z0] = sphere(20);
             [end_i, end_j] = size(X0);
 
-            if Video.option == "yes"
-                filename = Video.filename;
-                video = VideoWriter(filename, Video.profile);
-                video.Quality = 95;
-                video.FrameRate = Video.framerate;
-                %video.FileFormat = Video.format;
-                open(video);
+            if video.option == "yes"
+                filename = video.filename;
+                v = VideoWriter(filename, video.profile);
+                v.Quality = 95;
+                v.FrameRate = video.framerate;
+                open(v);
             end
 
             for h = 1:T
                 x0_now = y_out(h,5:7)'; % current body position
-                Rot = quaternion_to_matrice(y_out(h,1:4)); % current rotation
-                
-                % X_new = zeros([obj.N, size(X0)]);
-                % Y_new = zeros([obj.N, size(Y0)]);
-                % Z_new = zeros([obj.N, size(Z0)]);
+                Rot = aux.quaternion_to_matrice(y_out(h,1:4)); % current rotation
                 
                 X_new = cell(1,obj.N);
                 Y_new = cell(1,obj.N);
@@ -520,39 +391,16 @@ classdef Swimmer < classes.ConstrainedAggregate
                 Z_new_sub = zeros(size(Z0));
                 
                 theta_anim = zeros(1, obj.N - 1);
-                theta_dot_anim = zeros(1, obj.N - 1);
                 for k = 1:obj.N - 1
                     theta_anim(k) = obj.theta_laws{1, k + 1}(t_out(h));
-                    theta_dot_anim(k) = obj.theta_laws{2, k + 1}(t_out(h));
                 end
                 
-                t1G = [1; 0; 0];
-                t2G = [0; 1; 0];
-                ti = cell(1, obj.N);
-                xx = zeros(3, obj.N);
-
-                for i = 1:obj.Nf
-                
-                    l0 = cos(obj.alpha(i))*t1G + sin(obj.alpha(i))*t2G;
-                    
-                    for j = obj.fl_idx(1, i):obj.fl_idx(2, i)
-                        ti{j} = cos(obj.alpha(i) + sum(theta_anim(obj.fl_idx(1, i) - 1:j - 1)))*t1G...
-                            + sin(obj.alpha(i) + sum(theta_anim(obj.fl_idx(1, i) - 1:j - 1)))*t2G;
-                        sum_ti = zeros(3,1);
-                        for k = obj.fl_idx(1, i):j
-                            sum_ti = sum_ti + ti{k};
-                        end
-                        % relative position from the body in the mobile frame
-                        xx(:,j) = obj.a{1}*l0 + obj.l*sum_ti;
-                    end
-    
-                end
-                
+                [xx, ~] = classes.Swimmer.flagellaGeometry(zeros(3,1), eye(3), obj.a{1}, obj.alpha, theta_anim, obj.l, obj.fl_idx);
                 
                 for k = 1:obj.N
-                    X1 = obj.a{k}*X0; %+ obj.x{k}(1);
-                    Y1 = obj.a{k}*Y0; %+ obj.x{k}(2);
-                    Z1 = obj.a{k}*Z0; %+ obj.x{k}(3);
+                    X1 = obj.a{k}*X0; 
+                    Y1 = obj.a{k}*Y0; 
+                    Z1 = obj.a{k}*Z0; 
                     for i = 1:end_i
                         for j = 1:end_j
                             new_grid = Rot*([X1(i,j) Y1(i,j) Z1(i,j)]') + x0_now + Rot*xx(:,k);
@@ -573,35 +421,23 @@ classdef Swimmer < classes.ConstrainedAggregate
                 drawnow
                 for i = 1:obj.N
                     s = surf(X_new{i}, Y_new{i}, Z_new{i});
-                    c = colormap(C.color(i,:));
-                    set(s, 'FaceColor', c)
-                    % s.EdgeColor = 'none';
+                    set(s, 'FaceColor', color(i,:), 'EdgeColor', 'none', 'FaceAlpha', 0.7)
                     hold on
                 end
-                for i = 1:obj.Nf
-                    l0 = obj.a{1}*(cos(obj.alpha(i))*t1G + sin(obj.alpha(i))*t2G);
-                    l0_lab = Rot*l0 + x0_now + Rot*xx(:,1);
-                    markersize = 35; % 100 for mobile, 10 with a wall in the lab
-                    scatter3(l0_lab(1), l0_lab(2), l0_lab(3), markersize, 'k', 'filled')
-                end
                 hold off
-                xticks([0 0.02 0.04])
                 ax = gca;
                 ax.FontSize = 20;
                 axis equal
                 xlabel('$x$ (mm)', Interpreter='latex', FontSize=27)
                 ylabel('$y$ (mm)', Interpreter='latex', FontSize=27)
-                zlabel('z')
+                zlabel('$z$ (mm)', Interpreter='latex', FontSize=27)
                 
-                
-                view(Video.orient(1),Video.orient(2))
-                % axis ? difficile de penser à une bonne facon d'afficher
-                % de manière générale
-                if Video.layout == "mobile"
+                view(video.orient(1),video.orient(2))
+                if video.layout == "mobile"
                     scale = 40*obj.a{2};
                     axis_vec = [x0_now(1)-scale x0_now(1)+scale x0_now(2)-scale x0_now(2)+scale x0_now(3)-scale x0_now(3)+scale];
                     axis(axis_vec)
-                elseif Video.layout == "fixed"
+                elseif video.layout == "fixed"
                     axis_vec = [min(y_out(:, 5))-7*obj.a{1} max(y_out(:, 5))+7*obj.a{1}...
                         min(y_out(:, 6))-4*obj.a{1} max(y_out(:, 6))+4*obj.a{1}...
                         min(y_out(:, 7))-3*obj.a{1} max(y_out(:, 7))+3*obj.a{1}];
@@ -622,22 +458,22 @@ classdef Swimmer < classes.ConstrainedAggregate
                     hold off
                 end
                 
-                disp(h)
+                if mod(h, 100) == 0
+                    disp(['Frame ' num2str(h) '/' num2str(T)])
+                end
                 
-                if Video.option == "yes"
+                if video.option == "yes"
                     frame = getframe(gcf);
-                    writeVideo(video, frame);
+                    writeVideo(v, frame);
                 end
 
             end
 
-            if Video.option == "yes"
-                close(video);
+            if video.option == "yes"
+                close(v);
             end
 
         end
-
-        
         
     end
 

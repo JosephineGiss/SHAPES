@@ -42,7 +42,16 @@ classdef CircularHelix < classes.RigidBody
             dAB_eff = norm(xx(:, 2) - xx(:, 1));
             
             % readjusting position
+            if rho == 0
+                rho = 1;
+                guard = true; 
+            else
+                guard = false;
+            end
             current_xG = classes.ConstrainedAggregate.getCenterOfMass(xx, a, rho);
+            if guard 
+                rho = 0;
+            end
             X_ID = mat2cell(xx - current_xG, 3, ones(1, Ns - 1)); 
             for k = 1:Ns - 1
                 xx(:, k) = position.rot*(xx(:, k) - current_xG) + position.xG;

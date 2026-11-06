@@ -23,7 +23,9 @@ classdef UBentDisk < classes.Disk
             end
             
             % Calling constructor => flat disk initialization
-            obj@classes.Disk(rad, a, lambda, rho, xG = position.xG, rot = position.rot, setup = setup.setup);
+            % we do not compute tensors for the disk
+            guard = classes.SphereAssembly.suspendCalc(); %#ok<NASGU>
+            obj@classes.Disk(rad, a, lambda, rho, setup = setup.setup);
             
             obj.Rc = Rc;
             if ~isscalar(Rc)
@@ -35,9 +37,9 @@ classdef UBentDisk < classes.Disk
             % apply bending if Rc is not infinite
             if ~isinf(Rc)
                 if isscalar(Rc)
-                    xx = obj.applyBending(cell2mat(obj.x), Rc, position.rot, position.xG);
+                    xx = obj.applyBending(cell2mat(obj.x), Rc);
                 else
-                    xx = obj.applyBending(cell2mat(obj.x), Rc, position.rot, position.xG, poly_Rc);
+                    xx = obj.applyBending(cell2mat(obj.x), Rc, poly_Rc);
                 end
             end
             
@@ -78,9 +80,7 @@ classdef UBentDisk < classes.Disk
                 Calculation_gdM_Wall(obj)
             end
             
-            obj.xG = current_xG;
-            % obj.xG = sum([obj.m{:}].*cell2mat(obj.x)./obj.M, 2);
-            % obj.X_ID = mat2cell(cell2mat(obj.x) - obj.xG, 3, ones(1,obj.N)); 
+            obj.xG = position.xG;
             obj.X_ID = X_ID;
             obj.Rot_init = position.rot;
         end
@@ -103,22 +103,20 @@ classdef UBentDisk < classes.Disk
 
         end
 
-        function xx_bent = applyBending(~, xx, Rc, rot, xG, poly_Rc)
+        function xx_bent = applyBending(~, xx, Rc, poly_Rc)
             % to get the U-shaped disk
             
             N = size(xx, 2);
             xx_bent = zeros(3, N);
             
             for i = 1:N
-                % Position relative (avant rotation et translation)
-                % On doit "défaire" la transformation pour courber puis réappliquer
-                pos = rot'*(xx(:,i) - xG);
+                pos = xx(:,i);
                 
                 x = pos(1); 
                 y = pos(2);
                 % z = pos(3);
 
-                if nargin == 6
+                if nargin == 4
                     Rc = polyval(poly_Rc, abs(y));
                 end
                 
@@ -130,11 +128,9 @@ classdef UBentDisk < classes.Disk
                 y_new = Rc*sin(theta);
                 z_new = Rc*(1 - cos(theta));
                 
-                % Position courbée (dans le repère local)
                 pos_bent = [x_new; y_new; z_new];
                 
-                % Réapplication de la rotation et translation
-                xx_bent(:,i) = rot*pos_bent + xG;
+                xx_bent(:,i) = pos_bent;
             end
         end
     end
